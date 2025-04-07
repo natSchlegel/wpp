@@ -11,16 +11,6 @@ This project automates weekly task management and reminders via WhatsApp. The ap
 - **Task Status Updates**: Confirm, decline, or reassign tasks based on user responses.
 - **Admin Commands**: Admins can request task reports or update user details directly through WhatsApp.
 
-## Requirements
-
-- Node.js (v14+)
-- MySQL Database
-- Baileys Library
-- dotenv Library
-- qrcode-terminal Library
-- moment Library
-- node-cron Library
-
 ## Setup
 
 ### 1. Install Dependencies
@@ -43,11 +33,16 @@ ADMIN_NUMBER=your_whatsapp_admin_number
 
 ### 3. Set Up the Database
 
-Ensure your MySQL database is set up with tables for users, tasks, and weekly assignments. The database schema should include the following tables:
+To set up the database for this project, you need to use the provided database-dump.sql file, which contains the necessary structure and initial data for the application.
+Steps to set up the database:
 
-- **Users**: Store user information (id, phone_number, name, etc.)
-- **Tasks**: Store task information (id, task_name, description, etc.)
-- **Weekly Assignments**: Store assignments for each user (task_id, user_id, assigned_week, status, etc.)
+1. Create a new MySQL database or use an existing one.
+2. Import the database-dump.sql file into your database.
+ - You can do this by running the following command from the MySQL command line:
+```bash
+mysql -u <username> -p <database_name> < path_to/database-dump.sql
+```
+ - Replace ```bash<username>``` with your MySQL username, ```bas<database_name>``` with the name of the database you're using, and path_to/database-dump.sql with the path to the database-dump.sql file.
 
 ### 4. Run the Application
 
