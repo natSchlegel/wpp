@@ -26,7 +26,7 @@ const db = mysql.createConnection({
 
 const controlPanel = async () => {
 	console.log("Control Panel is running... now");
-	messageIfPending();
+
 	cron.schedule("0 8 * * 1", async () => {
 		console.log("🗓️ Assigning tasks for the new week on Monday at 8 AM...");
 		await assignTasks();
