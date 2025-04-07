@@ -61,7 +61,7 @@ The application follows a **cron-based scheduling system** to manage weekly task
 - **Wednesday (10 AM)**: Task confirmation requests are sent to users.
 - **Friday (10 AM)**: Reminders are sent to users for pending tasks.
 - **Saturday (8 AM)**: Pending tasks are reassigned to other users if needed.
-- **Sunday (8 AM)**: Pending task messages are sent again to remind users.
+- **Sunday (8 AM)**: Schedule messages are sent to the house's group chat.
 
 ### WhatsApp Integration
 
