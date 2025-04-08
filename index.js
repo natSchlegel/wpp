@@ -16,12 +16,14 @@ const getYearAndWeekNumber = () => {
 	return { year, week };
 };
 
-const db = mysql.createConnection({
+const db = mysql.createPool({
 	host: process.env.DB_HOST,
 	user: process.env.DB_USER,
 	password: process.env.DB_PASSWORD,
 	database: process.env.DB_NAME,
-	connectTimeout: 10000
+	waitForConnections: true,
+	connectionLimit: 10,
+	queueLimit: 0
 });
 
 const controlPanel = async () => {
@@ -105,7 +107,7 @@ const connectToWhatsApp = async () => {
 				const phoneNumber = message.key.remoteJid.replace("@s.whatsapp.net", "");
 				const text = message.message.conversation?.toLowerCase();
 
-				const [user] = await db.promise().query(
+				const [user] = await db.query(
 					"SELECT id FROM users WHERE phone_number = ?",
 					[phoneNumber]
 				);
@@ -128,7 +130,7 @@ const connectToWhatsApp = async () => {
 
 async function checkAndReassignPendingTasks() {
 
-	const [pendingTasks] = await db.promise().query(
+	const [pendingTasks] = await db.query(
 		`SELECT wa.*, t.task_name FROM weekly_assignments wa JOIN tasks t ON wa.task_id = t.id WHERE wa.status = 'pending' AND wa.assigned_week = ? AND wa.year = ?;`, [getYearAndWeekNumber().week, getYearAndWeekNumber().year]
 	);
 
@@ -150,7 +152,7 @@ async function checkAndReassignPendingTasks() {
 
 async function remindPendingTasks() {
 
-	const [pendingTasks] = await db.promise().query(
+	const [pendingTasks] = await db.query(
 		"SELECT user_id, task_id FROM weekly_assignments WHERE assigned_week = ? AND year = ? AND status = 'pending'",
 		[getYearAndWeekNumber().week, getYearAndWeekNumber().year]
 	);
@@ -161,12 +163,12 @@ async function remindPendingTasks() {
 	}
 
 	for (const task of pendingTasks) {
-		const [userData] = await db.promise().query(
+		const [userData] = await db.query(
 			"SELECT name, phone_number FROM users WHERE id = ?",
 			[task.user_id]
 		);
 
-		const [taskData] = await db.promise().query(
+		const [taskData] = await db.query(
 			"SELECT task_name FROM tasks WHERE id = ?",
 			[task.task_id]
 		);
@@ -187,30 +189,25 @@ async function requestConfirmation() {
 	
 	const { users, weeklyAssignments } = await getTaskAssignments();
 
-	const [pendingTasks] = await db.promise().query(
+	const [pendingTasks] = await db.query(
 		"SELECT user_id, task_id FROM weekly_assignments WHERE assigned_week = ? AND year = ? AND status = 'pending'",
 		[getYearAndWeekNumber().week, getYearAndWeekNumber().year]
 	);
 
-	const assignments = await Promise.all(
-		weeklyAssignments.map(async (task) => {
-			const [rows] = await db.promise().query(
-				"SELECT task_name FROM tasks WHERE id = (SELECT task_id FROM weekly_assignments WHERE id = ?)",
-				[task.id]
-			);
+	const [taskNameRows] = await db.query("SELECT id, task_name FROM tasks");
 
-			const taskName = rows[0]?.task_name || null;
-			const assignedUser = users.find(u => u.id === task.user_id);
-
-			return assignedUser ? {
-				taskName,
-				phoneNumber: assignedUser.phone_number,
-				name: assignedUser.name,
-				userId: assignedUser.id,
-				taskId: task.id
-			} : null;
-		})
-	);
+	const assignments = weeklyAssignments.map(task => {
+		const taskName = taskNameRows.find(t => t.id === task.task_id)?.task_name || null;
+		const assignedUser = users.find(u => u.id === task.user_id);
+	
+		return assignedUser ? {
+			taskName,
+			phoneNumber: assignedUser.phone_number,
+			name: assignedUser.name,
+			userId: assignedUser.id,
+			taskId: task.id
+		} : null;
+	});
 
 	for (const user of assignments.filter(Boolean)) {
 		const message = `Hallo ${user.name}! 😊\nDiese Woche bist du für die Aufgabe *${user.taskName}* zuständig.\nKannst du es erledigen? Bitte antworte mit *ja* oder *nein*.`;
@@ -252,7 +249,7 @@ async function handleUserResponse(sock, userId, message) {
 
 	console.log(phoneNumber, message);
 
-	const [taskData] = await db.promise().query(
+	const [taskData] = await db.query(
 		"SELECT * FROM weekly_assignments WHERE user_id = ? AND assigned_week = ? AND year = ? AND status IN ('pending', 'confirmed')",
 		[userId, getYearAndWeekNumber().week, getYearAndWeekNumber().year]
 	);
@@ -269,7 +266,7 @@ async function handleUserResponse(sock, userId, message) {
 		const task = taskData[0];
 
 		if (message.toLowerCase() === "ja") {
-			await db.promise().query(
+			await db.query(
 				"UPDATE weekly_assignments SET status = 'confirmed' WHERE id = ?",
 				[task.id]
 			);
@@ -331,12 +328,12 @@ async function handleUserResponse(sock, userId, message) {
 	}
 }
 async function checkIfAllConfirmed() {
-	const [tasks] = await db.promise().query(
+	const [tasks] = await db.query(
 		"SELECT COUNT(*) AS total_tasks FROM tasks;"
 	);
 
 	const totalTasks = tasks[0].total_tasks;
-	const [assignments] = await db.promise().query(
+	const [assignments] = await db.query(
 		"SELECT COUNT(*) AS total FROM weekly_assignments WHERE assigned_week = ? AND year = ? AND status = 'confirmed';",[getYearAndWeekNumber().week, getYearAndWeekNumber().year]);
 
 	const confirmedAssignments = assignments[0].total;
@@ -346,12 +343,12 @@ async function checkIfAllConfirmed() {
 }
 
 async function messageIfPending(year, week) {
-	const [tasks] = await db.promise().query(
+	const [tasks] = await db.query(
 		"SELECT COUNT(*) AS total_tasks FROM tasks;"
 	);
 
 	const totalTasks = tasks[0].total_tasks;
-	const [assignments] = await db.promise().query(
+	const [assignments] = await db.query(
 		"SELECT COUNT(*) AS total FROM weekly_assignments WHERE assigned_week = ? AND year = ? AND status = 'confirmed';",[week, year]);
 
 	const confirmedAssignments = assignments[0].total;
@@ -361,7 +358,7 @@ async function messageIfPending(year, week) {
 }
 
 async function createMessageGroupChat() {
-	const [assignments] = await db.promise().query(`
+	const [assignments] = await db.query(`
     SELECT wa.task_id, t.task_name, wa.status, u.name AS user_name FROM weekly_assignments wa JOIN users u ON wa.user_id = u.id JOIN tasks t ON wa.task_id = t.id WHERE wa.assigned_week = ? AND wa.year = ?;
   `, [getYearAndWeekNumber().week, getYearAndWeekNumber().year]);
 
@@ -405,14 +402,14 @@ async function createMessageGroupChat() {
 }
 
 async function updateUserDetails(userId, newName, newNumber) {
-	await db.promise().query(
+	await db.query(
 		"UPDATE users SET name = ?, phone_number = ? WHERE id = ?",
 		[newName, newNumber, userId]
 	);
 }
 
 async function checkIfParticipant(userId) {
-	const [rows] = await db.promise().query(
+	const [rows] = await db.query(
 		"SELECT phone_number FROM users WHERE id = ?",
 		[userId]
 	);
@@ -421,7 +418,7 @@ async function checkIfParticipant(userId) {
 }
 
 async function getNumber(userId) {
-	const [rows] = await db.promise().query(
+	const [rows] = await db.query(
 		"SELECT phone_number FROM users WHERE id = ?",
 		[userId]
 	);
@@ -430,9 +427,9 @@ async function getNumber(userId) {
 }
 
 async function changeNumber(userId) {
-	const [users] = await db.promise().query("SELECT id, name FROM users");
+	const [users] = await db.query("SELECT id, name FROM users");
 
-	const [rows] = await db.promise().query(
+	const [rows] = await db.query(
 		"SELECT phone_number FROM users WHERE id = ?",
 		[userId]
 	);
@@ -449,7 +446,7 @@ async function changeNumber(userId) {
 }
 
 async function declineTask(task) {
-	await db.promise().query(
+	await db.query(
 		"UPDATE weekly_assignments SET status = 'declined' WHERE id = ? AND assigned_week = ? AND year = ? AND status = 'pending'",
 		[task.id, getYearAndWeekNumber().week, getYearAndWeekNumber().year]
 	);
@@ -459,7 +456,7 @@ async function reassignTask(task) {
 
 	const { assignments, users } = await getTaskAssignments();
 
-	const [declinedUsers] = await db.promise().query(
+	const [declinedUsers] = await db.query(
 		`SELECT user_id FROM weekly_assignments 
      WHERE assigned_week = ? AND year = ? AND (status = 'declined' OR status = 'confirmed')`,
 		[getYearAndWeekNumber().week, getYearAndWeekNumber().year]
@@ -474,7 +471,7 @@ async function reassignTask(task) {
 		.filter(user => !declinedUserId.includes(user.id));
 
 	for (const user of eligibleUsers) {
-		const [existingConfirmation] = await db.promise().query(
+		const [existingConfirmation] = await db.query(
 			"SELECT * FROM weekly_assignments WHERE user_id = ? AND assigned_week = ? AND year = ?",
 			[user.id, getYearAndWeekNumber().week, getYearAndWeekNumber().year]
 		);
@@ -490,7 +487,7 @@ async function reassignTask(task) {
 }
 
 async function savePendingTask(userId, taskId) {
-	await db.promise().query(
+	await db.query(
 		"INSERT INTO weekly_assignments (user_id, task_id, assigned_week, year, status) VALUES (?, ?, ?, ?, 'pending')",
 		[userId, taskId, getYearAndWeekNumber().week, getYearAndWeekNumber().year]
 	);
@@ -499,12 +496,12 @@ async function savePendingTask(userId, taskId) {
 async function getTaskAssignments() {
 
 
-	const [tasks] = await db.promise().query('SELECT id, task_name, points FROM tasks');
-	const [assignments] = await db.promise().query('SELECT task_id, user_id FROM task_assignments');
-	const [users] = await db.promise().query('SELECT id, name, phone_number FROM users');
-	const [cleaningScores] = await db.promise().query('SELECT user_id, kitchen_cleaning, bathroom_cleaning, other_cleaning FROM cleaning_scores');
-	const [taskCategories] = await db.promise().query('SELECT task_id, category_id FROM task_cleaning_scores');
-	const [weeklyAssignments] = await db.promise().query("SELECT * FROM wpp.weekly_assignments WHERE assigned_week = ? AND year = ?", [getYearAndWeekNumber().week, getYearAndWeekNumber().year]);
+	const [tasks] = await db.query('SELECT id, task_name, points FROM tasks');
+	const [assignments] = await db.query('SELECT task_id, user_id FROM task_assignments');
+	const [users] = await db.query('SELECT id, name, phone_number FROM users');
+	const [cleaningScores] = await db.query('SELECT user_id, kitchen_cleaning, bathroom_cleaning, other_cleaning FROM cleaning_scores');
+	const [taskCategories] = await db.query('SELECT task_id, category_id FROM task_cleaning_scores');
+	const [weeklyAssignments] = await db.query("SELECT * FROM wpp.weekly_assignments WHERE assigned_week = ? AND year = ?", [getYearAndWeekNumber().week, getYearAndWeekNumber().year]);
 
 	return {
 		tasks,
@@ -606,7 +603,7 @@ async function assignTasks() {
 	});
 
 	for (const task of [...taskAssignments, ...reassignedTasks]) {
-		await db.promise().query(
+		await db.query(
 			"INSERT INTO weekly_assignments (user_id, task_id, assigned_week, year, status) VALUES (?, ?, ?, ?, ?)",
 			[
 				task.userId || task.newUser.userId,
@@ -634,7 +631,7 @@ function getCategoryName(categoryId) {
 async function updatePoints(userId) {
 	const { week, year } = getYearAndWeekNumber();
 
-	const [rows] = await db.promise().query(
+	const [rows] = await db.query(
 		"SELECT task_id FROM weekly_assignments WHERE user_id = ? AND year = ? AND assigned_week = ?",
 		[userId, year, week]
 	);
@@ -646,7 +643,7 @@ async function updatePoints(userId) {
 		return;
 	}
 
-	await db.promise().query(
+	await db.query(
 		`
       UPDATE cleaning_scores cs
       JOIN task_cleaning_scores tcs ON tcs.task_id = ? AND cs.user_id = ?
