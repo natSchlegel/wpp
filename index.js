@@ -691,13 +691,7 @@ const sendMessage = async (number, message, type) => {
 		console.log("Socket not initialized, message not sent");
 	}
 };
-db.connect((err) => {
-	if (err) {
-		console.error("Error while connecting to MySQL", err);
-		return;
-	}
-	console.log("Connected to MySQL");
-});
+
 await connectToWhatsApp();
 
 controlPanel().catch(err => console.log(err));
