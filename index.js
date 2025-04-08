@@ -1,14 +1,16 @@
-import mysql from "mysql2";
+import mysql from "mysql2/promise";
 import { makeWASocket, useMultiFileAuthState, DisconnectReason, chatModificationToAppPatch } from "baileys";
 import qrcode from "qrcode-terminal";
 import moment from "moment";
 import cron from "node-cron";
 import dotenv from "dotenv";
 
+
+dotenv.config();
+
 let sock;
 const userStates = {};
 
-dotenv.config();
 
 const getYearAndWeekNumber = () => {
 	const year = moment().isoWeekYear();
