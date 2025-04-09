@@ -11,12 +11,9 @@ dotenv.config();
 let sock;
 const userStates = {};
 
-
-const getYearAndWeekNumber = () => {
-	const year = moment().isoWeekYear();
-	const week = moment().isoWeek();
-	return { year, week };
-};
+global.week = moment().isoWeek();
+global.nextWeek = moment().add(1, 'week').isoWeek();
+global.year = moment().isoWeekYear();
 
 const db = mysql.createPool({
 	host: process.env.DB_HOST,
@@ -38,13 +35,13 @@ const controlPanel = async () => {
 
 	cron.schedule("0 10 * * 3", async () => {
 		await requestConfirmation();
-		await sendMessage(process.env.ADMIN_NUMBER, "🔔 Requesting confirmation for assigned tasks on Wednesday at 10 AM...", "contact");
+		await sendMessage(process.env.ADMIN_NUMBER, "🔔 Requesting confirmation for assigned tasks for the next week on Wednesday at 10 AM...", "contact");
 
 	});
 
 	cron.schedule("0 10 * * 5", async () => {
 		await remindPendingTasks();
-		await sendMessage(process.env.ADMIN_NUMBER, "🔔 Reminding pending task reminders for the week on Friday at 10 AM...", "contact");
+		await sendMessage(process.env.ADMIN_NUMBER, "🔔 Reminding pending task reminders for the next week on Friday at 10 AM...", "contact");
 	});
 
 	cron.schedule("0 8 * * 6", async () => {
@@ -55,9 +52,17 @@ const controlPanel = async () => {
 
 	cron.schedule("0 8 * * 0", async () => {
 		await messageIfPending();
-		await sendMessage(process.env.ADMIN_NUMBER, "🔄 Messaging if there is pending tasks for the week on Sunday at 8 AM", "contact");
+		await sendMessage(process.env.ADMIN_NUMBER, "🔄 Messaging groupchat if there is still pending tasks for the next week on Sunday at 8 AM", "contact");
 
 	});
+
+	cron.schedule("0 8 * * 0", async () => {
+		await taskCompleteMessage();
+		await sendMessage(process.env.ADMIN_NUMBER, "🔄 Messaging private contact if task was completed on Sunday at 8 AM", "contact");
+
+	});
+
+
 
 	console.log("Cron jobs scheduled and running in the background.");
 };
@@ -118,7 +123,7 @@ const connectToWhatsApp = async () => {
 				);
 
 				if (!user.length) {
-					sendMessage(process.env.ADMIN_NUMBER, text, "contact")
+					// sendMessage(process.env.ADMIN_NUMBER, text, "contact")
 				}
 				else {
 					await handleUserResponse(sock, user[0].id, text);
@@ -136,7 +141,7 @@ const connectToWhatsApp = async () => {
 async function checkAndReassignPendingTasks() {
 
 	const [pendingTasks] = await db.query(
-		`SELECT wa.*, t.task_name FROM weekly_assignments wa JOIN tasks t ON wa.task_id = t.id WHERE wa.status = 'pending' AND wa.assigned_week = ? AND wa.year = ?;`, [getYearAndWeekNumber().week, getYearAndWeekNumber().year]
+		`SELECT wa.*, t.task_name FROM weekly_assignments wa JOIN tasks t ON wa.task_id = t.id WHERE wa.status = 'pending' AND wa.assigned_week = ? AND wa.year = ?;`, [global.nextWeek, global.year]
 	);
 
 	if (pendingTasks.length === 0) {
@@ -146,20 +151,42 @@ async function checkAndReassignPendingTasks() {
 
 	for (const task of pendingTasks) {
 		console.log(`🔄 Declining task ${task.task_id}...`);
-		await declineTask(task, getYearAndWeekNumber().week, getYearAndWeekNumber().year);
+		await declineTask(task, global.nextWeek, global.year);
 	}
 
 	for (const task of pendingTasks) {
 		console.log(`🔄 Reassigning task ${task.task_id}...`);
-		await reassignTask(task, getYearAndWeekNumber().week, getYearAndWeekNumber().year);
+		await reassignTask(task, global.nextWeek, global.year);
 	}
 }
+
+async function taskCompleteMessage() {
+	const [confirmedTasks] = await db.query(
+		`SELECT 
+			wa.task_id, 
+			t.task_name AS taskName, 
+			u.name AS userName, 
+			u.phone_number AS phoneNumber 
+		FROM weekly_assignments wa 
+		JOIN users u ON wa.user_id = u.id 
+		JOIN tasks t ON wa.task_id = t.id 
+		WHERE wa.assigned_week = ? AND wa.year = ? AND wa.status = 'confirmed'`,
+		[global.week, global.year]
+	);
+
+	for (const task of confirmedTasks) {
+		const message = `Hallo ${task.userName}! 😊\nDiese Woche warst du für die Aufgabe *${task.taskName}* zuständig.\nHast du sie erledigt? Bitte antworte mit *erledigt* oder *unerledigt*.`;
+		await sendMessage(task.phoneNumber, message, "contact");
+		// console.log("Message sent to: " + task.userName + " for task: " + task.taskName + " on number: " + task.phoneNumber)
+	}
+}
+
 
 async function remindPendingTasks() {
 
 	const [pendingTasks] = await db.query(
 		"SELECT user_id, task_id FROM weekly_assignments WHERE assigned_week = ? AND year = ? AND status = 'pending'",
-		[getYearAndWeekNumber().week, getYearAndWeekNumber().year]
+		[global.nextWeek, global.year]
 	);
 
 	if (pendingTasks.length === 0) {
@@ -201,7 +228,7 @@ async function requestConfirmation() {
 		JOIN users u ON wa.user_id = u.id 
 		JOIN tasks t ON wa.task_id = t.id 
 		WHERE wa.assigned_week = ? AND wa.year = ? AND wa.status = 'pending'`,
-		[getYearAndWeekNumber().week, getYearAndWeekNumber().year]
+		[global.nextWeek, global.year]
 	);
 
 	for (const task of pendingTasks) {
@@ -245,45 +272,59 @@ async function handleUserResponse(sock, userId, message) {
 
 	console.log(phoneNumber, message);
 
-	const [taskData] = await db.query(
+	const [TaskNextWeek] = await db.query(
 		"SELECT * FROM weekly_assignments WHERE user_id = ? AND assigned_week = ? AND year = ? AND status IN ('pending', 'confirmed')",
-		[userId, getYearAndWeekNumber().week, getYearAndWeekNumber().year]
+		[userId, global.nextWeek, global.year]
 	);
 
-	if (taskData.length === 0) {
-		if (["ja", "nein"].includes(message.toLowerCase())) {
-			await sendMessage(phoneNumber, "Du hast entweder bereits eine Aufgabe bestätigt/abgelehnt oder du hast keine Aufgabe diese Woche.", "contact");
-		}
+	const [TaskThisWeek] = await db.query(
+		"SELECT * FROM weekly_assignments WHERE user_id = ? AND assigned_week = ? AND year = ? AND status IN ('confirmed')",
+		[userId, global.week, global.year]
+	);
 
-		if (["erledigt", "unerledigt"].includes(message.toLowerCase())) {
-			await sendMessage(phoneNumber, "Du hast keine Aufgabe diese Woche.", "contact");
-		}
-	} else {
-		const task = taskData[0];
-
-		if (message.toLowerCase() === "ja") {
+	if ((message.toLowerCase() === "ja" || message.toLowerCase() === "nein") && TaskNextWeek.length > 0) {
+		if(message.toLowerCase() === "ja"){
+			const task = TaskNextWeek[0];
 			await db.query(
 				"UPDATE weekly_assignments SET status = 'confirmed' WHERE id = ?",
 				[task.id]
 			);
 			await checkIfAllConfirmed();
 			await sendMessage(phoneNumber, "Super! Danke, dass du die Aufgabe übernimmst!", "contact");
-		} else if (message.toLowerCase() === "nein") {
+			return;
+		} else {
 			await declineTask(task);
 			await reassignTask(task);
 			await sendMessage(phoneNumber, "Schade! Die Aufgabe wurde erneut zugewiesen. Vielen Dank für deine Rückmeldung!", "contact");
-		} else if (message.toLowerCase() === "erledigt") {
+			return;
+		}
+	}
+
+	if ((message.toLowerCase() === "erledigt" || message.toLowerCase() === "unerledigt") && TaskThisWeek.length > 0) {
+		if (message.toLowerCase() === "erledigt") {
 			await sendMessage(phoneNumber, "Vielen Dank, dein Punktzahl wurde aktualisiert.", "contact");
 			await updatePoints(userId);
-		} else if (message.toLowerCase() === "unerledigt") {
+		} else {
 			await sendMessage(phoneNumber, "Schade, ich hoffe, dass du die Aufgabe beim nächsten Mal schaffen.", "contact");
 		}
+		return;
+	}
+
+	if (message.toLowerCase() === "ja" || message.toLowerCase() === "nein" && TaskNextWeek.length === 0) {
+		await sendMessage(phoneNumber, "Du hast entweder bereits eine Aufgabe bestätigt/abgelehnt oder du hast keine Aufgabe für nachste Woche.", "contact");
+		return;
+	}
+
+	if (message.toLowerCase() === "erledigt" || message.toLowerCase() === "unerledigt" && TaskThisWeek.length === 0) {
+		await sendMessage(phoneNumber, "Du hast keine Aufgabe diese Woche.", "contact");
+		return;
 	}
 
 	if (message.toLowerCase() === "admin") {
 		if (await checkIfParticipant(userId)) {
 			await sendMessage(phoneNumber, "Du kannst die folgenden Befehle verwenden:\n\n- *report*: Um den Bericht zu sehen.\n- *change numbers*: Um die Nummer zu ändern.", "contact");
 		}
+		return;
 	}
 
 	if (message.toLowerCase() === "do assign tasks") {
@@ -291,6 +332,15 @@ async function handleUserResponse(sock, userId, message) {
 			await assignTasks();
 			await sendMessage(phoneNumber, "Function called: assignTasks", "contact");
 		}
+		return;
+	}
+
+	if (message.toLowerCase() === "do task complete message") {
+		if (await checkIfAdmin(phoneNumber)) {
+			await taskCompleteMessage();
+			await sendMessage(phoneNumber, "Function called: taskCompleteMessage", "contact");
+		}
+		return;
 	}
 
 	if (message.toLowerCase() == "do request confirmation") {
@@ -298,6 +348,7 @@ async function handleUserResponse(sock, userId, message) {
 			await requestConfirmation();
 			await sendMessage(phoneNumber, "Function called: requestConfirmation", "contact");
 		}
+		return;
 	}
 
 	if (message.toLowerCase() == "do remind pending tasks") {
@@ -305,6 +356,7 @@ async function handleUserResponse(sock, userId, message) {
 			await remindPendingTasks();
 			await sendMessage(phoneNumber, "Function called: remindPendingTasks", "contact");
 		}
+		return;
 	}
 
 	if (message.toLowerCase() == "do check and reassign pending tasks") {
@@ -312,6 +364,7 @@ async function handleUserResponse(sock, userId, message) {
 			await checkAndReassignPendingTasks();
 			await sendMessage(phoneNumber, "Function called: checkAndReassignPendingTasks", "contact");
 		}
+		return;
 	}
 
 	if (message.toLowerCase() == "do message if pending") {
@@ -319,24 +372,24 @@ async function handleUserResponse(sock, userId, message) {
 			await messageIfPending();
 			await sendMessage(phoneNumber, "Function called: messageIfPending", "contact");
 		}
+		return;
 	}
 
 	if (message.toLowerCase() == "do help") {
 		if (await checkIfAdmin(phoneNumber)) {
 			await sendMessage(phoneNumber, "Functions (do + :\nassign tasks: Assign weekly assignments\nrequest confirmation: Request first confirmation from participants\n remind pending tasks: Remind participants about their assignments\ncheck and reassign pending tasks: Reassign unconfirmed assignments to others\nmessage if pending: Send group message with weekly assignments", "contact");
 		}
+		return;
 	}
-
-
-
-
 
 	if (message.toLowerCase() === "report") {
 		await sendCleaningScores(phoneNumber);
+		return;
 	} else if (message.toLowerCase() === "change numbers") {
 		let phrase = await changeNumber(userId);
 		await sendMessage(phoneNumber, phrase, "contact");
 		userStates[userId] = { step: 0 };
+		return;
 	} else if (userStates[userId]) {
 		let phoneNumber = await getNumber(userId);
 		switch (userStates[userId].step) {
@@ -367,7 +420,9 @@ async function handleUserResponse(sock, userId, message) {
 				break;
 		}
 	}
+	return;
 }
+
 async function checkIfAllConfirmed() {
 	const [tasks] = await db.query(
 		"SELECT COUNT(*) AS total_tasks FROM tasks;"
@@ -375,7 +430,7 @@ async function checkIfAllConfirmed() {
 
 	const totalTasks = tasks[0].total_tasks;
 	const [assignments] = await db.query(
-		"SELECT COUNT(*) AS total FROM weekly_assignments WHERE assigned_week = ? AND year = ? AND status = 'confirmed';", [getYearAndWeekNumber().week, getYearAndWeekNumber().year]);
+		"SELECT COUNT(*) AS total FROM weekly_assignments WHERE assigned_week = ? AND year = ? AND status = 'confirmed';", [global.nextWeek, global.year]);
 
 	const confirmedAssignments = assignments[0].total;
 	if (confirmedAssignments == totalTasks) {
@@ -401,7 +456,7 @@ async function messageIfPending(year, week) {
 async function createMessageGroupChat() {
 	const [assignments] = await db.query(`
     SELECT wa.task_id, t.task_name, wa.status, u.name AS user_name FROM weekly_assignments wa JOIN users u ON wa.user_id = u.id JOIN tasks t ON wa.task_id = t.id WHERE wa.assigned_week = ? AND wa.year = ?;
-  `, [getYearAndWeekNumber().week, getYearAndWeekNumber().year]);
+  `, [global.nextWeek, global.year]);
 
 	const tasksToReport = assignments.reduce((acc, task) => {
 		if (!acc[task.task_id]) {
@@ -495,7 +550,7 @@ async function changeNumber(userId) {
 async function declineTask(task) {
 	await db.query(
 		"UPDATE weekly_assignments SET status = 'declined' WHERE id = ? AND assigned_week = ? AND year = ? AND status = 'pending'",
-		[task.id, getYearAndWeekNumber().week, getYearAndWeekNumber().year]
+		[task.id, global.nextWeek, global.year]
 	);
 }
 
@@ -506,7 +561,7 @@ async function reassignTask(task) {
 	const [declinedUsers] = await db.query(
 		`SELECT user_id FROM weekly_assignments 
      WHERE assigned_week = ? AND year = ? AND (status = 'declined' OR status = 'confirmed')`,
-		[getYearAndWeekNumber().week, getYearAndWeekNumber().year]
+		[global.nextWeek, global.year]
 	);
 
 	const declinedUserId = declinedUsers.map(user => Number(user.user_id));
@@ -520,13 +575,13 @@ async function reassignTask(task) {
 	for (const user of eligibleUsers) {
 		const [existingConfirmation] = await db.query(
 			"SELECT * FROM weekly_assignments WHERE user_id = ? AND assigned_week = ? AND year = ?",
-			[user.id, getYearAndWeekNumber().week, getYearAndWeekNumber().year]
+			[user.id, global.nextWeek, global.year]
 		);
 
 		if (existingConfirmation.length === 0) {
 			const message = `Hallo ${user.name}! 😊 \nDie Aufgabe *${task.task_name}* wurde neu zugewiesen. Kannst du sie übernehmen? Antworte mit *ja* oder *nein*.`;
 			await sendMessage(user.phone_number, message, "contact");
-			await savePendingTask(user.id, task.task_id, getYearAndWeekNumber().week, getYearAndWeekNumber().year);
+			await savePendingTask(user.id, task.task_id, global.nextWeek, global.year);
 			return;
 		}
 	}
@@ -536,7 +591,7 @@ async function reassignTask(task) {
 async function savePendingTask(userId, taskId) {
 	await db.query(
 		"INSERT INTO weekly_assignments (user_id, task_id, assigned_week, year, status) VALUES (?, ?, ?, ?, 'pending')",
-		[userId, taskId, getYearAndWeekNumber().week, getYearAndWeekNumber().year]
+		[userId, taskId, global.nextWeek, global.year]
 	);
 }
 
@@ -548,7 +603,7 @@ async function getTaskAssignments() {
 	const [users] = await db.query('SELECT id, name, phone_number FROM users');
 	const [cleaningScores] = await db.query('SELECT user_id, kitchen_cleaning, bathroom_cleaning, other_cleaning FROM cleaning_scores');
 	const [taskCategories] = await db.query('SELECT task_id, category_id FROM task_cleaning_scores');
-	const [weeklyAssignments] = await db.query("SELECT * FROM wpp.weekly_assignments WHERE assigned_week = ? AND year = ?", [getYearAndWeekNumber().week, getYearAndWeekNumber().year]);
+	const [weeklyAssignments] = await db.query("SELECT * FROM wpp.weekly_assignments WHERE assigned_week = ? AND year = ?", [global.nextWeek, global.year]);
 
 	return {
 		tasks,
@@ -655,8 +710,8 @@ async function assignTasks() {
 			[
 				task.userId || task.newUser.userId,
 				task.taskId,
-				getYearAndWeekNumber().week,
-				getYearAndWeekNumber().year,
+				global.nextWeek,
+				global.year,
 				"pending"
 			]
 		);
@@ -676,7 +731,7 @@ function getCategoryName(categoryId) {
 	}
 }
 async function updatePoints(userId) {
-	const { week, year } = getYearAndWeekNumber();
+
 
 	const [rows] = await db.query(
 		"SELECT task_id FROM weekly_assignments WHERE user_id = ? AND year = ? AND assigned_week = ?",
@@ -686,7 +741,7 @@ async function updatePoints(userId) {
 	const task_id = rows[0]?.task_id || null;
 
 	if (!task_id) {
-		console.log(`No task assigned for user ${userId} in week ${week} of year ${year}`);
+		console.log(`No task assigned for user ${userId} in week ${global.nextWeek} of year ${global.year}`);
 		return;
 	}
 
@@ -706,6 +761,9 @@ async function updatePoints(userId) {
 	);
 
 	console.log(`Points updated for user ${userId} in task ${task_id}`);
+
+	await db. query(`UPDATE weekly_assignments SET status = "completed" WHERE user_id = ? AND assigned_week = ? AND year = ?
+	`,[userId, global.week, global.year ])
 }
 
 const sendMessage = async (number, message, type) => {
