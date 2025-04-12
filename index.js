@@ -82,7 +82,8 @@ const connectToWhatsApp = async () => {
 						console.error("Error in getMessage:", error);
 						return null;
 					}
-				}
+				},
+				patchMessageBeforeSending: (message, jids) => jids ? jids.map(jid => ({ recipientJid: jid, ...message })) : message
 			});
 
 			sock.ev.on("creds.update", saveCreds);
