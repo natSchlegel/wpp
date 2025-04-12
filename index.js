@@ -618,7 +618,9 @@ async function sendCleaningScores(phoneNumber) {
 	try {
 		const { users, cleaningScores } = await getTaskAssignments();
 
-		let message = `🏠 Reinigungs - Punktestand 🏠`;
+		const now = moment();
+
+		let message = `🏠 Reinigungs-Punktestand - ${now.format('DD.MM.YYYY HH:mm')} 🏠`;
 		users.forEach(user => {
 			const userScore = cleaningScores.find(score => score.user_id === user.id) || {};
 			message += `\n\n${user.name}:\n`;
