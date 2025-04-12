@@ -789,7 +789,10 @@ const sendMessage = async (number, message, type) => {
 				await sock.sendMessage(id, { text: message });
 				console.log("Message sent successfully to the groupchat");
 			} catch (error) {
-				console.error("Error sending message: ", error);
+				if (err.message.includes('closed session')) {
+					await sock.ev.process({ type: 'session', action: 'delete', id });
+					await sock.sendMessage(id, { text: 'We had to reset our secure session. All good now!' });
+				}
 			}
 		} else if (type === "contact") {
 			try {
@@ -797,7 +800,12 @@ const sendMessage = async (number, message, type) => {
 				await sock.sendMessage(id, { text: message });
 				console.log("Message sent successfully to the contact: " + number);
 			} catch (error) {
-				console.error("Error sending message: ", error);
+				console.log(error);
+				
+				if (err.message.includes('closed session')) {
+					await sock.ev.process({ type: 'session', action: 'delete', id });
+					await sock.sendMessage(id, { text: 'We had to reset our secure session. All good now!' });
+				}
 			}
 		} else {
 			console.log('Invalid type. Use "group" or "contact"');
