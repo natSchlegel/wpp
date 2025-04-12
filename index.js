@@ -477,7 +477,7 @@ async function createMessageGroupChat() {
 		return acc;
 	}, {});
 
-	let message = "❗Diese Woche's Putzplan:❗\n";
+	let message = `❗Diese Woche's (${getWeekRange()}) Putzplan:❗\n`;
 
 	Object.values(tasksToReport).forEach(task => {
 		if (task.declinedUsers.length > 0 && task.confirmedUsers.length > 0) {
@@ -492,9 +492,17 @@ async function createMessageGroupChat() {
 	});
 
 	message += "\n✨ Vielen Dank! ✨";
-
 	const groupId = process.env.GROUP_ID;
 	sendMessage(groupId, message, "group");
+}
+
+
+function getWeekRange() {
+  const startOfWeek = moment().year(global.year).week(global.nextWeek).startOf('week');
+  const endOfWeek = moment(startOfWeek).endOf('week');
+  const formatDate = (date) => date.format('DD.MM');
+  
+  return `${formatDate(startOfWeek)} ~ ${formatDate(endOfWeek)}`;
 }
 
 async function updateUserDetails(userId, newName, newNumber) {
