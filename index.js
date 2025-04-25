@@ -283,144 +283,148 @@ async function handleUserResponse(sock, userId, message) {
 		[userId, global.week, global.year]
 	);
 
-	if ((message.toLowerCase() === "ja" || message.toLowerCase() === "nein") && TaskNextWeek.length > 0) {
-		if(message.toLowerCase() === "ja"){
-			const task = TaskNextWeek[0];
-			await db.query(
-				"UPDATE weekly_assignments SET status = 'confirmed' WHERE id = ?",
-				[task.id]
-			);
-			await checkIfAllConfirmed();
-			await sendMessage(phoneNumber, "Super! Danke, dass du die Aufgabe übernimmst!", "contact");
+
+	if (typeof message === "string") {
+		if ((message.toLowerCase() === "ja" || message.toLowerCase() === "nein") && TaskNextWeek.length > 0) {
+			if (message.toLowerCase() === "ja") {
+				const task = TaskNextWeek[0];
+				await db.query(
+					"UPDATE weekly_assignments SET status = 'confirmed' WHERE id = ?",
+					[task.id]
+				);
+				await checkIfAllConfirmed();
+				await sendMessage(phoneNumber, "Super! Danke, dass du die Aufgabe übernimmst!", "contact");
+				return;
+			} else {
+				await declineTask(task);
+				await reassignTask(task);
+				await sendMessage(phoneNumber, "Schade! Die Aufgabe wurde erneut zugewiesen. Vielen Dank für deine Rückmeldung!", "contact");
+				return;
+			}
+		}
+
+		if ((message.toLowerCase() === "erledigt" || message.toLowerCase() === "unerledigt") && TaskThisWeek.length > 0) {
+			if (message.toLowerCase() === "erledigt") {
+				await sendMessage(phoneNumber, "Vielen Dank, dein Punktzahl wurde aktualisiert.", "contact");
+				await updatePoints(userId);
+			} else {
+				await sendMessage(phoneNumber, "Schade, ich hoffe, dass du die Aufgabe beim nächsten Mal schaffen.", "contact");
+			}
 			return;
-		} else {
-			await declineTask(task);
-			await reassignTask(task);
-			await sendMessage(phoneNumber, "Schade! Die Aufgabe wurde erneut zugewiesen. Vielen Dank für deine Rückmeldung!", "contact");
+		}
+
+		if (message.toLowerCase() === "ja" || message.toLowerCase() === "nein" && TaskNextWeek.length === 0) {
+			await sendMessage(phoneNumber, "Du hast entweder bereits eine Aufgabe bestätigt/abgelehnt oder du hast keine Aufgabe für nachste Woche.", "contact");
 			return;
 		}
-	}
 
-	if ((message.toLowerCase() === "erledigt" || message.toLowerCase() === "unerledigt") && TaskThisWeek.length > 0) {
-		if (message.toLowerCase() === "erledigt") {
-			await sendMessage(phoneNumber, "Vielen Dank, dein Punktzahl wurde aktualisiert.", "contact");
-			await updatePoints(userId);
-		} else {
-			await sendMessage(phoneNumber, "Schade, ich hoffe, dass du die Aufgabe beim nächsten Mal schaffen.", "contact");
+		if (message.toLowerCase() === "erledigt" || message.toLowerCase() === "unerledigt" && TaskThisWeek.length === 0) {
+			await sendMessage(phoneNumber, "Du hast keine Aufgabe diese Woche.", "contact");
+			return;
 		}
-		return;
-	}
 
-	if (message.toLowerCase() === "ja" || message.toLowerCase() === "nein" && TaskNextWeek.length === 0) {
-		await sendMessage(phoneNumber, "Du hast entweder bereits eine Aufgabe bestätigt/abgelehnt oder du hast keine Aufgabe für nachste Woche.", "contact");
-		return;
-	}
-
-	if (message.toLowerCase() === "erledigt" || message.toLowerCase() === "unerledigt" && TaskThisWeek.length === 0) {
-		await sendMessage(phoneNumber, "Du hast keine Aufgabe diese Woche.", "contact");
-		return;
-	}
-
-	if (message.toLowerCase() === "admin") {
-		if (await checkIfParticipant(userId)) {
-			await sendMessage(phoneNumber, "Du kannst die folgenden Befehle verwenden:\n\n- *report*: Um den Bericht zu sehen.\n- *change numbers*: Um die Nummer zu ändern.", "contact");
+		if (message.toLowerCase() === "admin") {
+			if (await checkIfParticipant(userId)) {
+				await sendMessage(phoneNumber, "Du kannst die folgenden Befehle verwenden:\n\n- *report*: Um den Bericht zu sehen.\n- *change numbers*: Um die Nummer zu ändern.", "contact");
+			}
+			return;
 		}
-		return;
-	}
 
-	if (message.toLowerCase() === "do assign tasks") {
-		if (await checkIfAdmin(phoneNumber)) {
-			await assignTasks();
-			await sendMessage(phoneNumber, "Function called: assignTasks", "contact");
+		if (message.toLowerCase() === "do assign tasks") {
+			if (await checkIfAdmin(phoneNumber)) {
+				await assignTasks();
+				await sendMessage(phoneNumber, "Function called: assignTasks", "contact");
+			}
+			return;
 		}
-		return;
-	}
 
-	if (message.toLowerCase() === "do task complete message") {
-		if (await checkIfAdmin(phoneNumber)) {
-			await taskCompleteMessage();
-			await sendMessage(phoneNumber, "Function called: taskCompleteMessage", "contact");
+		if (message.toLowerCase() === "do task complete message") {
+			if (await checkIfAdmin(phoneNumber)) {
+				await taskCompleteMessage();
+				await sendMessage(phoneNumber, "Function called: taskCompleteMessage", "contact");
+			}
+			return;
 		}
-		return;
-	}
 
-	if (message.toLowerCase() == "do request confirmation") {
-		if (await checkIfAdmin(phoneNumber)) {
-			await requestConfirmation();
-			await sendMessage(phoneNumber, "Function called: requestConfirmation", "contact");
+		if (message.toLowerCase() == "do request confirmation") {
+			if (await checkIfAdmin(phoneNumber)) {
+				await requestConfirmation();
+				await sendMessage(phoneNumber, "Function called: requestConfirmation", "contact");
+			}
+			return;
 		}
-		return;
-	}
 
-	if (message.toLowerCase() == "do remind pending tasks") {
-		if (await checkIfAdmin(phoneNumber)) {
-			await remindPendingTasks();
-			await sendMessage(phoneNumber, "Function called: remindPendingTasks", "contact");
+		if (message.toLowerCase() == "do remind pending tasks") {
+			if (await checkIfAdmin(phoneNumber)) {
+				await remindPendingTasks();
+				await sendMessage(phoneNumber, "Function called: remindPendingTasks", "contact");
+			}
+			return;
 		}
-		return;
-	}
 
-	if (message.toLowerCase() == "do check and reassign pending tasks") {
-		if (await checkIfAdmin(phoneNumber)) {
-			await checkAndReassignPendingTasks();
-			await sendMessage(phoneNumber, "Function called: checkAndReassignPendingTasks", "contact");
+		if (message.toLowerCase() == "do check and reassign pending tasks") {
+			if (await checkIfAdmin(phoneNumber)) {
+				await checkAndReassignPendingTasks();
+				await sendMessage(phoneNumber, "Function called: checkAndReassignPendingTasks", "contact");
+			}
+			return;
 		}
-		return;
-	}
 
-	if (message.toLowerCase() == "do message if pending") {
-		if (await checkIfAdmin(phoneNumber)) {
-			await messageIfPending();
-			await sendMessage(phoneNumber, "Function called: messageIfPending", "contact");
+		if (message.toLowerCase() == "do message if pending") {
+			if (await checkIfAdmin(phoneNumber)) {
+				await messageIfPending();
+				await sendMessage(phoneNumber, "Function called: messageIfPending", "contact");
+			}
+			return;
 		}
-		return;
-	}
 
-	if (message.toLowerCase() == "do help") {
-		if (await checkIfAdmin(phoneNumber)) {
-			await sendMessage(phoneNumber, "Functions (do + :\nassign tasks: Assign weekly assignments\nrequest confirmation: Request first confirmation from participants\n remind pending tasks: Remind participants about their assignments\ncheck and reassign pending tasks: Reassign unconfirmed assignments to others\nmessage if pending: Send group message with weekly assignments", "contact");
+		if (message.toLowerCase() == "do help") {
+			if (await checkIfAdmin(phoneNumber)) {
+				await sendMessage(phoneNumber, "Functions (do + :\nassign tasks: Assign weekly assignments\nrequest confirmation: Request first confirmation from participants\n remind pending tasks: Remind participants about their assignments\ncheck and reassign pending tasks: Reassign unconfirmed assignments to others\nmessage if pending: Send group message with weekly assignments", "contact");
+			}
+			return;
 		}
-		return;
-	}
 
-	if (message.toLowerCase() === "report") {
-		await sendCleaningScores(phoneNumber);
-		return;
-	} else if (message.toLowerCase() === "change numbers") {
-		let phrase = await changeNumber(userId);
-		await sendMessage(phoneNumber, phrase, "contact");
-		userStates[userId] = { step: 0 };
-		return;
-	} else if (userStates[userId]) {
-		let phoneNumber = await getNumber(userId);
-		switch (userStates[userId].step) {
-			case 0:
-				userStates[userId].selectedUserId = await waitForResponse(sock, phoneNumber);
-				userStates[userId].step = 1;
-				break;
-			case 1:
-				await sendMessage(phoneNumber, "Bitte gib den neuen Namen ein:", "contact");
-				userStates[userId].step = 2;
-				break;
-			case 2:
-				userStates[userId].newName = await waitForResponse(sock, phoneNumber);
-				userStates[userId].step = 3;
-				break;
-			case 3:
-				await sendMessage(phoneNumber, "Bitte gib die neue Nummer ein:", "contact");
-				userStates[userId].step = 4;
-				break;
-			case 4:
-				userStates[userId].newNumber = await waitForResponse(sock, phoneNumber);
-				userStates[userId].step = 5;
-				break;
-			case 5:
-				await updateUserDetails(userStates[userId].selectedUserId, userStates[userId].newName, userStates[userId].newNumber);
-				delete userStates[userId];
-				await sendMessage(phoneNumber, "Deine Daten wurden erfolgreich aktualisiert.", "contact");
-				break;
+		if (message.toLowerCase() === "report") {
+			await sendCleaningScores(phoneNumber);
+			return;
+		} else if (message.toLowerCase() === "change numbers") {
+			let phrase = await changeNumber(userId);
+			await sendMessage(phoneNumber, phrase, "contact");
+			userStates[userId] = { step: 0 };
+			return;
+		} else if (userStates[userId]) {
+			let phoneNumber = await getNumber(userId);
+			switch (userStates[userId].step) {
+				case 0:
+					userStates[userId].selectedUserId = await waitForResponse(sock, phoneNumber);
+					userStates[userId].step = 1;
+					break;
+				case 1:
+					await sendMessage(phoneNumber, "Bitte gib den neuen Namen ein:", "contact");
+					userStates[userId].step = 2;
+					break;
+				case 2:
+					userStates[userId].newName = await waitForResponse(sock, phoneNumber);
+					userStates[userId].step = 3;
+					break;
+				case 3:
+					await sendMessage(phoneNumber, "Bitte gib die neue Nummer ein:", "contact");
+					userStates[userId].step = 4;
+					break;
+				case 4:
+					userStates[userId].newNumber = await waitForResponse(sock, phoneNumber);
+					userStates[userId].step = 5;
+					break;
+				case 5:
+					await updateUserDetails(userStates[userId].selectedUserId, userStates[userId].newName, userStates[userId].newNumber);
+					delete userStates[userId];
+					await sendMessage(phoneNumber, "Deine Daten wurden erfolgreich aktualisiert.", "contact");
+					break;
+			}
 		}
 	}
+
 	return;
 }
 
@@ -499,11 +503,11 @@ async function createMessageGroupChat() {
 
 
 function getWeekRange() {
-  const startOfWeek = moment().year(global.year).week(global.nextWeek).startOf('week');
-  const endOfWeek = moment(startOfWeek).endOf('week');
-  const formatDate = (date) => date.format('DD.MM');
-  
-  return `${formatDate(startOfWeek)} ~ ${formatDate(endOfWeek)}`;
+	const startOfWeek = moment().year(global.year).week(global.nextWeek).startOf('week');
+	const endOfWeek = moment(startOfWeek).endOf('week');
+	const formatDate = (date) => date.format('DD.MM');
+
+	return `${formatDate(startOfWeek)} ~ ${formatDate(endOfWeek)}`;
 }
 
 async function updateUserDetails(userId, newName, newNumber) {
@@ -773,8 +777,8 @@ async function updatePoints(userId) {
 
 	console.log(`Points updated for user ${userId} in task ${task_id}`);
 
-	await db. query(`UPDATE weekly_assignments SET status = "completed" WHERE user_id = ? AND assigned_week = ? AND year = ?
-	`,[userId, global.week, global.year ])
+	await db.query(`UPDATE weekly_assignments SET status = "completed" WHERE user_id = ? AND assigned_week = ? AND year = ?
+	`, [userId, global.week, global.year])
 }
 
 const sendMessage = async (number, message, type) => {
@@ -802,7 +806,7 @@ const sendMessage = async (number, message, type) => {
 				console.log("Message sent successfully to the contact: " + number);
 			} catch (error) {
 				console.log(error);
-				
+
 				if (err.message.includes('closed session')) {
 					await sock.ev.process({ type: 'session', action: 'delete', id });
 					await sock.sendMessage(id, { text: 'We had to reset our secure session. All good now!' });
