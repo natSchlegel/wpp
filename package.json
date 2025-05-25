@@ -9,7 +9,7 @@
     "generate": "prisma generate",
     "dev": "node index.js",
     "postinstall": "prisma generate && prisma migrate dev",
-    "seed": "tsx prisma/seed.tsx"
+    "migrate:reset": "prisma migrate reset"
   },
   "keywords": [],
   "author": "",
@@ -23,12 +23,13 @@
     "mysql2": "^3.12.0",
     "node-cron": "^3.0.3",
     "prisma": "^6.8.2",
-    "qrcode-terminal": "^0.12.0"
+    "qrcode-terminal": "^0.12.0",
+    "sqlite3": "^5.1.7"
   },
   "devDependencies": {
     "tsx": "^4.19.4"
   },
-    "prisma": {
+  "prisma": {
     "seed": "tsx prisma/seed.tsx"
   }
 }

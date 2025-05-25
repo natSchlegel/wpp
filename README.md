@@ -24,25 +24,70 @@ npm install mysql2 baileys qrcode-terminal moment node-cron dotenv
 Create a `.env` file in the root of your project with the following variables:
 
 ```env
-DB_HOST=your_database_host
-DB_USER=your_database_user
-DB_PASSWORD=your_database_password
-DB_NAME=your_database_name
 ADMIN_NUMBER=your_whatsapp_admin_number
+GROUP_ID=your_group_id
 ```
 
-### 3. Set Up the Database
+3. Set Up the Database
 
-To set up the database for this project, you need to use the provided database-dump.sql file, which contains the necessary structure and initial data for the application.
-Steps to set up the database:
+This project uses a SQLite database, managed by Prisma. Here's how to initialize your database schema with Prisma and then populate it with your existing data.
+3.1. Install SQLite Command-Line Tool
 
-1. Create a new MySQL database or use an existing one.
-2. Import the database-dump.sql file into your database.
- - You can do this by running the following command from the MySQL command line:
-```bash
-mysql -u <username> -p <database_name> < path_to/database-dump.sql
-```
- - Replace ```bash<username>``` with your MySQL username, ```bas<database_name>``` with the name of the database you're using, and path_to/database-dump.sql with the path to the database-dump.sql file.
+First, make sure you have the sqlite3 command-line tool installed on your system. You'll need this to import your data.
+
+    For Debian/Ubuntu:
+
+    sudo apt-get update
+    sudo apt-get install sqlite3
+
+
+    For macOS (using Homebrew):
+
+    brew install sqlite
+
+
+    For Windows:
+    Download the precompiled binaries from the SQLite website and add the directory containing sqlite3.exe to your system's PATH environment variable.
+
+3.2. Prepare Prisma for Migration
+
+Now, let's get Prisma ready to create your database schema.
+
+    Remove any old Prisma migrations (if they exist):
+    It's crucial to start fresh to avoid conflicts with previous migration attempts.
+
+    rm -rf prisma/migrations
+
+
+    Generate your Prisma schema and apply migrations:
+    This command will create your dev.db SQLite file (if it doesn't exist) and build all tables based on your prisma/schema.prisma file.
+
+    npx prisma migrate dev --name initial_schema_setup
+
+
+    You'll be prompted to provide a name for this migration (e.g., initial_schema_setup). Prisma will then generate the necessary SQL and apply it to your dev.db.
+
+3.3. Import Initial Data
+
+With your database schema now set up by Prisma, you can import your existing data.
+
+    Ensure your data dump is ready:
+    Make sure your database-dump.sql file (which should only contain INSERT statements, and be adapted for SQLite) is in your project's root directory.
+
+    Import the data into your database:
+    This command will execute the INSERT statements from your database-dump.sql file into the prisma/dev.db database that Prisma just created.
+
+    sqlite3 prisma/dev.db < database-dump.sql
+
+
+3.4. Verify (Optional)
+
+To confirm your database is set up correctly and contains your data, open Prisma Studio:
+
+npx prisma studio
+
+
+This will launch a browser window showing your database tables and their contents. You should see the data you just imported.
 
 ### 4. Run the Application
 
