@@ -1,0 +1,97 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+enum CategoryName {
+  kitchen_cleaning
+  bathroom_cleaning
+  other_cleaning
+}
+
+model Category {
+  id                Int                  @id @default(autoincrement())
+  category_name     CategoryName
+  description       String?              // Removed @db.VarChar(255)
+  TaskCleaningScore TaskCleaningScore[]
+
+  @@map("categories")
+}
+
+model CleaningScore {
+  user_id          Int     @id
+  kitchen_cleaning Int
+  bathroom_cleaning Int
+  other_cleaning   Int
+  user             User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("cleaning_scores")
+}
+
+model TaskAssignment {
+  task_id Int
+  user_id Int
+  task    Task @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  user    User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@id([task_id, user_id])
+  @@map("task_assignments")
+}
+
+model TaskCleaningScore {
+  task_id    Int
+  category_id Int
+  task       Task     @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  category   Category @relation(fields: [category_id], references: [id], onDelete: Cascade)
+
+  @@id([task_id, category_id])
+  @@map("task_cleaning_scores")
+}
+
+model Task {
+  id                 Int                  @id @default(autoincrement())
+  task_name          String               // Removed @db.VarChar(255)
+  points             Int
+  TaskAssignment     TaskAssignment[]
+  TaskCleaningScore  TaskCleaningScore[]
+  WeeklyAssignment   WeeklyAssignment[]
+
+  @@map("tasks")
+}
+
+model User {
+  id              Int              @id @default(autoincrement())
+  name            String?          // Removed @db.VarChar(255)
+  phone_number    String?          // Removed @db.VarChar(15)
+  CleaningScore   CleaningScore?
+  TaskAssignment  TaskAssignment[]
+  WeeklyAssignment WeeklyAssignment[]
+
+  @@map("users")
+}
+
+enum AssignmentStatus {
+  pending
+  confirmed
+  completed
+  declined
+}
+
+model WeeklyAssignment {
+  id           Int              @id @default(autoincrement())
+  user_id      Int
+  task_id      Int
+  assigned_week Int
+  status       AssignmentStatus? @default(pending)
+  created_at   DateTime?        @default(now()) // Removed @db.Timestamp(0)
+  modified_at  DateTime?        @updatedAt       // Removed @db.Timestamp(0)
+  year         Int?
+  task         Task             @relation(fields: [task_id], references: [id])
+  user         User             @relation(fields: [user_id], references: [id])
+
+  @@map("weekly_assignments")
+}
